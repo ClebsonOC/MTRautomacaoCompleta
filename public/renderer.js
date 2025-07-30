@@ -1,4 +1,4 @@
-// public/renderer.js - Lógica da interface do usuário (Corrigido para corresponder ao HTML original)
+// public/renderer.js - Lógica da interface do usuário (Corrigido para restaurar logs e progresso)
 
 document.addEventListener('DOMContentLoaded', () => {
     const api = window.electronAPI;
@@ -49,7 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.selectFolderBtn.disabled = !enabled;
         
         elements.robotAnimation.classList.toggle('hidden', enabled);
-        elements.logWrapper.style.height = enabled ? '300px' : '200px';
+        // Ajusta a altura da área de log quando o robô está visível/invisível
+        elements.logWrapper.style.height = enabled ? 'auto' : '200px';
     }
 
     // --- Handlers de Eventos do Usuário ---
@@ -66,7 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.aboutBtn.addEventListener('click', () => api.showAboutDialog());
 
-    // NOVO: Event listener para o botão de abrir o assinador
     elements.openAssinadorBtn.addEventListener('click', () => {
         addLog('Abrindo a ferramenta de assinatura...', 'info');
         api.openAssinadorWindow();
@@ -95,15 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Handlers para Eventos Vindos do Main/Python ---
-
-    api.onLogMessage((...args) => {
-        const [event, { message, level }] = args;
-        addLog(message, level);
+    // CORREÇÃO: A forma de receber os dados foi restaurada para a original e correta.
+    api.onLogMessage((_event, payload) => {
+        addLog(payload.message, payload.level);
     });
 
-    api.onProgressUpdate((...args) => {
-        const [event, { current, total, message }] = args;
-        updateProgress(current, total, message);
+    api.onProgressUpdate((_event, payload) => {
+        updateProgress(payload.current, payload.total, payload.message);
     });
 
     api.onAutomationFinished(() => {

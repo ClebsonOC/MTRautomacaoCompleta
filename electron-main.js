@@ -57,27 +57,40 @@ function createAssinadorWindow() {
 // --- LÓGICA DE EXECUÇÃO PYTHON ---
 
 function getPythonExecutablePath() {
-    return isDev
+    const execPath = isDev
       ? path.join(__dirname, 'vendor', 'python-portable', 'python.exe')
       : path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'python-portable', 'python.exe');
+
+    if (!fs.existsSync(execPath)) {
+        dialog.showErrorBox('Erro Crítico', `Executável do Python não encontrado em: ${execPath}`);
+        return null;
+    }
+    return execPath;
 }
 
 // --- IPC HANDLERS DA JANELA PRINCIPAL (MTR) ---
 
 ipcMain.on('start-automation', (event, config) => {
     const pythonExecutable = getPythonExecutablePath();
+    if (!pythonExecutable) return;
+
     const scriptPath = path.join(__dirname, 'src', 'main.py');
     const pythonProcess = spawn(pythonExecutable, [scriptPath]);
     
     pythonProcess.stdin.write(JSON.stringify(config));
     pythonProcess.stdin.end();
 
+    // Lida com o stream de dados do script MTR
     pythonProcess.stdout.on('data', (data) => {
-        try {
-            const jsonData = JSON.parse(data.toString());
-            if (jsonData.type === 'log') event.sender.send('log-message', jsonData.payload);
-            if (jsonData.type === 'progress') event.sender.send('progress-update', jsonData.payload);
-        } catch (e) { /* Ignora erros de parse de stream */ }
+        data.toString().split('\n').forEach(line => {
+            if (line) {
+                try {
+                    const jsonData = JSON.parse(line);
+                    if (jsonData.type === 'log') event.sender.send('log-message', jsonData.payload);
+                    if (jsonData.type === 'progress') event.sender.send('progress-update', jsonData.payload);
+                } catch (e) { /* Ignora erros de parse de stream */ }
+            }
+        });
     });
     pythonProcess.stderr.on('data', (data) => event.sender.send('log-message', { message: `[Python MTR Error]: ${data.toString()}`, level: 'error' }));
     pythonProcess.on('close', (code) => {
@@ -97,6 +110,8 @@ ipcMain.handle('dialog:showAbout', () => dialog.showMessageBox(mainWindow, { typ
 function runAssinadorScript(args) {
     return new Promise((resolve, reject) => {
         const pythonExecutable = getPythonExecutablePath();
+        if (!pythonExecutable) return reject('Executável do Python não encontrado');
+
         const scriptPath = path.join(__dirname, 'assinador', 'src', 'python_script.py');
         const pythonProcess = spawn(pythonExecutable, [scriptPath, ...args]);
         
@@ -112,6 +127,7 @@ function runAssinadorScript(args) {
             if (code === 0) resolve(stdout.trim().split('\n').pop() || 'Processo concluído.');
             else reject(stderr || `Processo Python falhou com o código ${code}`);
         });
+         pythonProcess.on('error', (err) => reject(err));
     });
 }
 
