@@ -2,3 +2,5 @@
 /node_modules/
 /dist/
 /vendor/
+/pdfs_entrada/**
+/pdfs_saida/**

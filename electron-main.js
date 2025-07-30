@@ -1,4 +1,4 @@
-// electron-main.js - Processo principal do Electron (v3.0 - Arquitetura de Múltiplas Janelas)
+// electron-main.js - Processo principal do Electron (v3.0 - Caminhos Corrigidos)
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
@@ -8,7 +8,7 @@ const fs = require('fs');
 const isDev = !app.isPackaged;
 
 let mainWindow;
-let assinadorWindow; // Variável para a nova janela
+let assinadorWindow;
 
 // --- FUNÇÕES DE JANELA ---
 
@@ -17,7 +17,7 @@ function createWindow() {
         width: 850,
         height: 950,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'), // Preload da janela principal
+            preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -29,7 +29,6 @@ function createWindow() {
     }
 }
 
-// Nova função para criar a janela do assinador
 function createAssinadorWindow() {
     if (assinadorWindow) {
         assinadorWindow.focus();
@@ -42,7 +41,7 @@ function createAssinadorWindow() {
         minHeight: 700,
         title: 'Ferramenta de Assinatura de PDF',
         webPreferences: {
-            preload: path.join(__dirname, 'assinador', 'preload.js'), // Preload da janela do assinador
+            preload: path.join(__dirname, 'assinador', 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -80,7 +79,6 @@ ipcMain.on('start-automation', (event, config) => {
     pythonProcess.stdin.write(JSON.stringify(config));
     pythonProcess.stdin.end();
 
-    // Lida com o stream de dados do script MTR
     pythonProcess.stdout.on('data', (data) => {
         data.toString().split('\n').forEach(line => {
             if (line) {
@@ -105,14 +103,18 @@ ipcMain.handle('dialog:selectExcel', () => dialog.showOpenDialogSync(mainWindow,
 ipcMain.handle('dialog:selectFolder', () => dialog.showOpenDialogSync(mainWindow, { properties: ['openDirectory'] })?.[0] || null);
 ipcMain.handle('dialog:showAbout', () => dialog.showMessageBox(mainWindow, { type: 'info', title: 'Sobre a Automação MTR', message: 'Automação MTR INEA v2.2.0', detail: 'Desenvolvido por: Clebson de Oliveira Correia\nEmail: oliveiraclebson007@gmail.com' }));
 
+
 // --- IPC HANDLERS DA JANELA DO ASSINADOR ---
+
+// CORREÇÃO: Define o caminho base para a pasta 'assinador'
+const assinadorBasePath = path.join(__dirname, 'assinador');
 
 function runAssinadorScript(args) {
     return new Promise((resolve, reject) => {
         const pythonExecutable = getPythonExecutablePath();
         if (!pythonExecutable) return reject('Executável do Python não encontrado');
 
-        const scriptPath = path.join(__dirname, 'assinador', 'src', 'python_script.py');
+        const scriptPath = path.join(assinadorBasePath, 'src', 'python_script.py');
         const pythonProcess = spawn(pythonExecutable, [scriptPath, ...args]);
         
         let stdout = '';
@@ -131,12 +133,12 @@ function runAssinadorScript(args) {
     });
 }
 
-const basePath = app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath();
+// CORREÇÃO: Função que cria as pastas DENTRO da pasta 'assinador'
 const setupAssinadorFolders = () => {
     const paths = {
-        inputFolder: path.join(basePath, 'pdfs_entrada'),
-        outputFolder: path.join(basePath, 'pdfs_saida'),
-        subscriptionsFolder: path.join(basePath, 'assinaturas'),
+        inputFolder: path.join(assinadorBasePath, 'pdfs_entrada'),
+        outputFolder: path.join(assinadorBasePath, 'pdfs_saida'),
+        subscriptionsFolder: path.join(assinadorBasePath, 'assinaturas'),
     };
     fs.mkdirSync(paths.inputFolder, { recursive: true });
     fs.mkdirSync(paths.outputFolder, { recursive: true });
@@ -147,7 +149,7 @@ const setupAssinadorFolders = () => {
 
 ipcMain.handle('get-initial-data', async () => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(basePath, 'data');
+    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
     fs.mkdirSync(dataFolder, { recursive: true });
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
@@ -160,7 +162,7 @@ ipcMain.handle('get-initial-data', async () => {
 
 ipcMain.handle('get-signature-preview', async (e, args) => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(basePath, 'data');
+    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
     const result = await runAssinadorScript(['get_preview', args.signatureName, args.signatureType, paths.inputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile]);
@@ -168,14 +170,14 @@ ipcMain.handle('get-signature-preview', async (e, args) => {
 });
 
 ipcMain.handle('save-signature-position', async (e, args) => {
-    const dataFolder = path.join(basePath, 'data');
+    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
     const positionFile = args.signatureType === 'driver' ? path.join(dataFolder, 'posicoes.txt') : path.join(dataFolder, 'responsaveis_posicoes.json');
     return await runAssinadorScript(['save_position', args.signatureName, args.signatureType, String(args.position.x), String(args.position.y), String(args.position.w), String(args.position.h), positionFile]);
 });
 
 ipcMain.handle('process-pdfs', async (e, args) => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(basePath, 'data');
+    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
     return await runAssinadorScript(['process_pdfs', paths.inputFolder, paths.outputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile, args.emissorFile, args.receptorFile]);
