@@ -1,149 +1,175 @@
-// electron-main.js - Processo principal do Electron
+// electron-main.js - Processo principal do Electron (v3.0 - Arquitetura de Múltiplas Janelas)
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const fs = require('fs');
 
-// Variável para verificar se estamos em ambiente de desenvolvimento ou produção (empacotado)
 const isDev = !app.isPackaged;
 
 let mainWindow;
-let pythonProcess = null;
+let assinadorWindow; // Variável para a nova janela
 
-/**
- * Cria a janela principal da aplicação.
- */
+// --- FUNÇÕES DE JANELA ---
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 850,
         height: 950,
         webPreferences: {
-            // Anexa o script de 'preload' à janela para expor APIs de forma segura
-            preload: path.join(__dirname, 'preload.js'),
-            // É recomendado manter contextIsolation e nodeIntegration desabilitados por segurança
+            preload: path.join(__dirname, 'preload.js'), // Preload da janela principal
             contextIsolation: true,
             nodeIntegration: false,
         },
-        icon: path.join(__dirname, 'public/logo_inea.jpg') // Adiciona o ícone
+        icon: path.join(__dirname, 'public', 'logo_inea.jpg')
     });
-
-    // Carrega o arquivo HTML principal
-    mainWindow.loadFile('public/index.html');
-    
-    // Opcional: Abre o DevTools para depuração apenas em desenvolvimento
+    mainWindow.loadFile(path.join(__dirname, 'public', 'index.html'));
     if (isDev) {
-        mainWindow.webContents.openDevTools();
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 }
 
-// --- Ciclo de Vida da Aplicação ---
-
-app.whenReady().then(() => {
-    createWindow();
-
-    // Handler para macOS: recria a janela se o app estiver no dock
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
+// Nova função para criar a janela do assinador
+function createAssinadorWindow() {
+    if (assinadorWindow) {
+        assinadorWindow.focus();
+        return;
+    }
+    assinadorWindow = new BrowserWindow({
+        width: 1366,
+        height: 768,
+        minWidth: 1100,
+        minHeight: 700,
+        title: 'Ferramenta de Assinatura de PDF',
+        webPreferences: {
+            preload: path.join(__dirname, 'assinador', 'preload.js'), // Preload da janela do assinador
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        icon: path.join(__dirname, 'assinador', 'public', 'assets', 'icon.png')
     });
-});
+    assinadorWindow.loadFile(path.join(__dirname, 'assinador', 'public', 'index.html'));
+    assinadorWindow.on('closed', () => {
+        assinadorWindow = null;
+    });
+}
 
-// Encerra a aplicação quando todas as janelas forem fechadas (exceto no macOS)
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-    // Garante que o processo python seja encerrado ao fechar o app
-    if (pythonProcess) {
-        pythonProcess.kill();
-    }
-});
+// --- LÓGICA DE EXECUÇÃO PYTHON ---
 
-// --- Comunicação Inter-Processos (IPC) ---
+function getPythonExecutablePath() {
+    return isDev
+      ? path.join(__dirname, 'vendor', 'python-portable', 'python.exe')
+      : path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'python-portable', 'python.exe');
+}
 
-// Ouve o evento 'start-automation' vindo do renderer.js
+// --- IPC HANDLERS DA JANELA PRINCIPAL (MTR) ---
+
 ipcMain.on('start-automation', (event, config) => {
-    // Caminho dinâmico para o executável do Python portátil
-    const pythonExecutable = isDev
-      ? path.join(__dirname, 'vendor', 'python-portable', 'python.exe') // Caminho para desenvolvimento
-      : path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'python-portable', 'python.exe'); // Caminho para produção
-
-    // Caminho dinâmico para o script Python principal
-    const scriptPath = isDev 
-      ? path.join(__dirname, 'src', 'main.py') // Caminho para desenvolvimento
-      : path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'main.py'); // Caminho para produção
-
-    // Inicia o script Python como um processo filho
-    pythonProcess = spawn(pythonExecutable, [scriptPath]);
-
-    // Envia a configuração para o script Python via stdin
+    const pythonExecutable = getPythonExecutablePath();
+    const scriptPath = path.join(__dirname, 'src', 'main.py');
+    const pythonProcess = spawn(pythonExecutable, [scriptPath]);
+    
     pythonProcess.stdin.write(JSON.stringify(config));
     pythonProcess.stdin.end();
 
-    // Ouve a saída padrão (stdout) do processo Python
     pythonProcess.stdout.on('data', (data) => {
-        const output = data.toString();
-        // Processa cada linha JSON recebida
-        output.split('\n').forEach(line => {
-            if (line) {
-                try {
-                    const jsonData = JSON.parse(line);
-                    // Envia os dados para a janela (renderer) com base no tipo
-                    if (jsonData.type === 'log') {
-                        mainWindow.webContents.send('log-message', jsonData.payload);
-                    } else if (jsonData.type === 'progress') {
-                        mainWindow.webContents.send('progress-update', jsonData.payload);
-                    }
-                } catch (e) {
-                    // Se não for JSON, trata como um log de sistema
-                    mainWindow.webContents.send('log-message', { message: `[Python Raw]: ${line}`, level: 'warning' });
-                }
-            }
+        try {
+            const jsonData = JSON.parse(data.toString());
+            if (jsonData.type === 'log') event.sender.send('log-message', jsonData.payload);
+            if (jsonData.type === 'progress') event.sender.send('progress-update', jsonData.payload);
+        } catch (e) { /* Ignora erros de parse de stream */ }
+    });
+    pythonProcess.stderr.on('data', (data) => event.sender.send('log-message', { message: `[Python MTR Error]: ${data.toString()}`, level: 'error' }));
+    pythonProcess.on('close', (code) => {
+        event.sender.send('log-message', { message: `Script MTR finalizado com código ${code}.`, level: 'info' });
+        event.sender.send('automation-finished');
+    });
+});
+
+ipcMain.on('open-assinador-window', createAssinadorWindow);
+
+ipcMain.handle('dialog:selectExcel', () => dialog.showOpenDialogSync(mainWindow, { properties: ['openFile'], filters: [{ name: 'Planilhas Excel', extensions: ['xlsx', 'xls'] }] })?.[0] || null);
+ipcMain.handle('dialog:selectFolder', () => dialog.showOpenDialogSync(mainWindow, { properties: ['openDirectory'] })?.[0] || null);
+ipcMain.handle('dialog:showAbout', () => dialog.showMessageBox(mainWindow, { type: 'info', title: 'Sobre a Automação MTR', message: 'Automação MTR INEA v2.2.0', detail: 'Desenvolvido por: Clebson de Oliveira Correia\nEmail: oliveiraclebson007@gmail.com' }));
+
+// --- IPC HANDLERS DA JANELA DO ASSINADOR ---
+
+function runAssinadorScript(args) {
+    return new Promise((resolve, reject) => {
+        const pythonExecutable = getPythonExecutablePath();
+        const scriptPath = path.join(__dirname, 'assinador', 'src', 'python_script.py');
+        const pythonProcess = spawn(pythonExecutable, [scriptPath, ...args]);
+        
+        let stdout = '';
+        let stderr = '';
+        pythonProcess.stdout.on('data', (data) => stdout += data.toString('utf8'));
+        pythonProcess.stderr.on('data', (data) => {
+            stderr += data.toString('utf8');
+            if (assinadorWindow) assinadorWindow.webContents.send('process-status', data.toString('utf8').trim());
+        });
+        
+        pythonProcess.on('close', (code) => {
+            if (code === 0) resolve(stdout.trim().split('\n').pop() || 'Processo concluído.');
+            else reject(stderr || `Processo Python falhou com o código ${code}`);
         });
     });
+}
 
-    // Ouve a saída de erro (stderr) do processo Python
-    pythonProcess.stderr.on('data', (data) => {
-        mainWindow.webContents.send('log-message', { message: `[Python Error]: ${data.toString()}`, level: 'error' });
-    });
+const basePath = app.isPackaged ? path.dirname(app.getPath('exe')) : app.getAppPath();
+const setupAssinadorFolders = () => {
+    const paths = {
+        inputFolder: path.join(basePath, 'pdfs_entrada'),
+        outputFolder: path.join(basePath, 'pdfs_saida'),
+        subscriptionsFolder: path.join(basePath, 'assinaturas'),
+    };
+    fs.mkdirSync(paths.inputFolder, { recursive: true });
+    fs.mkdirSync(paths.outputFolder, { recursive: true });
+    fs.mkdirSync(path.join(paths.subscriptionsFolder, '0 - RESPONSÁVEIS'), { recursive: true });
+    fs.mkdirSync(path.join(paths.subscriptionsFolder, 'MOTORISTAS'), { recursive: true });
+    return paths;
+};
 
-    // Ouve o evento de finalização do processo Python
-    pythonProcess.on('close', (code) => {
-        mainWindow.webContents.send('log-message', { message: `Script Python finalizado com código ${code}.`, level: 'info' });
-        mainWindow.webContents.send('automation-finished');
-        pythonProcess = null;
-    });
+ipcMain.handle('get-initial-data', async () => {
+    const paths = setupAssinadorFolders();
+    const dataFolder = path.join(basePath, 'data');
+    fs.mkdirSync(dataFolder, { recursive: true });
+    const driverPosFile = path.join(dataFolder, 'posicoes.txt');
+    const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
+    if (!fs.existsSync(driverPosFile)) fs.writeFileSync(driverPosFile, '');
+    if (!fs.existsSync(respPosFile)) fs.writeFileSync(respPosFile, '{}');
+    
+    const result = await runAssinadorScript(['get_signature_config', paths.subscriptionsFolder, driverPosFile, respPosFile]);
+    return JSON.parse(result);
 });
 
-// --- Handlers para Diálogos Nativos ---
-
-ipcMain.handle('dialog:selectExcel', () => {
-    const result = dialog.showOpenDialogSync(mainWindow, {
-        title: 'Selecionar Planilha Excel',
-        properties: ['openFile'],
-        filters: [{ name: 'Planilhas Excel', extensions: ['xlsx', 'xls'] }]
-    });
-    return result ? result[0] : null;
+ipcMain.handle('get-signature-preview', async (e, args) => {
+    const paths = setupAssinadorFolders();
+    const dataFolder = path.join(basePath, 'data');
+    const driverPosFile = path.join(dataFolder, 'posicoes.txt');
+    const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
+    const result = await runAssinadorScript(['get_preview', args.signatureName, args.signatureType, paths.inputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile]);
+    return JSON.parse(result);
 });
 
-ipcMain.handle('dialog:selectFolder', () => {
-    const result = dialog.showOpenDialogSync(mainWindow, {
-        title: 'Selecionar Pasta Raiz para Downloads',
-        properties: ['openDirectory']
-    });
-    return result ? result[0] : null;
+ipcMain.handle('save-signature-position', async (e, args) => {
+    const dataFolder = path.join(basePath, 'data');
+    const positionFile = args.signatureType === 'driver' ? path.join(dataFolder, 'posicoes.txt') : path.join(dataFolder, 'responsaveis_posicoes.json');
+    return await runAssinadorScript(['save_position', args.signatureName, args.signatureType, String(args.position.x), String(args.position.y), String(args.position.w), String(args.position.h), positionFile]);
 });
 
-ipcMain.handle('dialog:showAbout', () => {
-    dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Sobre a Automação MTR',
-        message: 'Automação MTR INEA v2.0 (Electron)',
-        detail: 'Desenvolvido por: Clebson de Oliveira Correia\nEmail: oliveiraclebson007@gmail.com'
-    });
+ipcMain.handle('process-pdfs', async (e, args) => {
+    const paths = setupAssinadorFolders();
+    const dataFolder = path.join(basePath, 'data');
+    const driverPosFile = path.join(dataFolder, 'posicoes.txt');
+    const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
+    return await runAssinadorScript(['process_pdfs', paths.inputFolder, paths.outputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile, args.emissorFile, args.receptorFile]);
 });
 
-ipcMain.handle('dialog:showError', (event, title, content) => {
-    dialog.showErrorBox(title, content);
+// --- CICLO DE VIDA DA APLICAÇÃO ---
+app.whenReady().then(createWindow);
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+});
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });

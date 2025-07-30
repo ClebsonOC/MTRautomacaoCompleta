@@ -1,0 +1,86 @@
+/* public/style.css */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Estilos para os campos de seleção de pasta */
+.path-group .path-input {
+    @apply w-full p-2 border border-slate-300 rounded-l-lg bg-slate-50 text-sm text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition truncate;
+}
+.path-group .path-button {
+    @apply bg-slate-200 hover:bg-slate-300 text-slate-600 p-2 border border-l-0 border-slate-300 rounded-r-lg transition;
+}
+
+/* Estilos para os campos de posição X, Y, L, A */
+.pos-input-group {
+    @apply flex items-center gap-2;
+}
+.pos-input-group label {
+    @apply font-semibold text-slate-500 text-sm;
+}
+.pos-input-group input {
+    @apply w-full p-1.5 border border-slate-300 rounded-md text-center text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition;
+}
+/* Remove as setas dos inputs numéricos */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Estilos para o overlay de assinatura */
+#signatureOverlay {
+    position: absolute;
+    border: 2px dashed #4f46e5; /* indigo-600 */
+    background-color: rgba(99, 102, 241, 0.3); /* indigo-400 com opacidade */
+    cursor: grab;
+    z-index: 10;
+    box-sizing: border-box;
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+}
+#signatureOverlay.dragging {
+    cursor: grabbing;
+}
+
+/* Alças de redimensionamento */
+.resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background-color: #4f46e5; /* indigo-600 */
+    border-radius: 50%;
+    z-index: 20;
+    border: 2px solid #ffffff;
+}
+.resize-handle[data-handle="nw"] { top: -6px; left: -6px; cursor: nwse-resize; }
+.resize-handle[data-handle="ne"] { top: -6px; right: -6px; cursor: nesw-resize; }
+.resize-handle[data-handle="sw"] { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.resize-handle[data-handle="se"] { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+/* Estilo para pré-visualização de imagem */
+#pdfPreview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 0.5rem;
+}
+
+/* Scrollbar personalizada para o log */
+#status-log::-webkit-scrollbar {
+  width: 6px;
+}
+#status-log::-webkit-scrollbar-track {
+  background: #f1f5f9; /* slate-100 */
+}
+#status-log::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 3px;
+}
+#status-log::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}

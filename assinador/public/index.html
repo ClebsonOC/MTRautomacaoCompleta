@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assinador de PDF Automatizado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-100 font-[Poppins] flex flex-col h-screen">
+
+    <header class="bg-white shadow-md z-20">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="./assets/icon.png" alt="Ícone" class="h-10 w-10">
+                <h1 class="text-2xl font-bold text-slate-800">Assinador de PDF</h1>
+            </div>
+            <div id="status-indicator" class="w-4 h-4 rounded-full bg-gray-400 transition-colors duration-500" title="Status"></div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto p-6 flex flex-col lg:flex-row gap-6 overflow-hidden">
+        <!-- Coluna Esquerda: Controles (com largura fixa em telas grandes) -->
+        <section class="w-full lg:w-[450px] flex-shrink-0 flex flex-col gap-6">
+            
+            <!-- Card de Seleção para Processamento -->
+            <div class="bg-white p-5 rounded-xl shadow-lg flex-shrink-0">
+                <h2 class="text-xl font-semibold text-slate-700 mb-4 border-b pb-2">Seleção para Processamento</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label for="emissorSelect" class="text-sm font-medium text-slate-600">Emissor</label>
+                        <select id="emissorSelect" class="w-full p-2 border border-slate-300 rounded-md bg-slate-50 focus:ring-2 focus:ring-indigo-500">
+                           <option value="">Carregando...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="receptorSelect" class="text-sm font-medium text-slate-600">Receptor</label>
+                        <select id="receptorSelect" class="w-full p-2 border border-slate-300 rounded-md bg-slate-50 focus:ring-2 focus:ring-indigo-500">
+                           <option value="">Carregando...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card de Ação -->
+            <div class="bg-white p-5 rounded-xl shadow-lg flex-shrink-0">
+                 <h2 class="text-xl font-semibold text-slate-700 mb-4 border-b pb-2">Ação</h2>
+                <button id="processPdfsBtn" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fas fa-cogs mr-2"></i> Processar PDFs
+                </button>
+            </div>
+            
+             <!-- Card de Status -->
+            <div class="bg-white p-5 rounded-xl shadow-lg flex-grow flex flex-col overflow-hidden">
+                <h2 class="text-xl font-semibold text-slate-700 mb-4 border-b pb-2">Log de Atividades</h2>
+                <div id="status-log" class="text-sm text-slate-500 space-y-2 flex-grow overflow-y-auto pr-2">
+                    <p>Aguardando ações...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Coluna Direita: Ajustes (flexível para ocupar o espaço restante) -->
+        <section class="w-full flex-1 flex flex-col gap-6">
+            <!-- Card de Ajustes -->
+            <div class="bg-white p-4 rounded-xl shadow-lg flex-shrink-0">
+                <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                    <!-- Seletores -->
+                    <div class="flex-grow flex flex-wrap items-center gap-x-6 gap-y-3">
+                        <div class="flex-1 min-w-[200px]">
+                            <label for="fixedSignatureSelect" class="text-xs font-medium text-slate-500">Responsáveis (para ajuste)</label>
+                            <select id="fixedSignatureSelect" class="w-full p-2 border border-slate-300 rounded-md bg-slate-50 focus:ring-2 focus:ring-indigo-500">
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                        <div class="flex-1 min-w-[200px]">
+                            <label for="driverSelect" class="text-xs font-medium text-slate-500">Motoristas</label>
+                            <select id="driverSelect" class="w-full p-2 border border-slate-300 rounded-md bg-slate-50 focus:ring-2 focus:ring-indigo-500">
+                                <option value="">Carregando...</option>
+                            </select>
+                             <div id="driver-warning" class="text-xs text-amber-600 mt-1 h-4"></div>
+                        </div>
+                    </div>
+                    <!-- Controles e Botão -->
+                    <div class="flex-grow flex flex-wrap items-end gap-x-4 gap-y-3">
+                        <div class="flex items-center gap-2">
+                            <div class="pos-input-group"><label for="posX">X</label><input type="number" id="posX" class="w-20"></div>
+                            <div class="pos-input-group"><label for="posY">Y</label><input type="number" id="posY" class="w-20"></div>
+                            <div class="pos-input-group"><label for="width">L</label><input type="number" id="width" class="w-20"></div>
+                            <div class="pos-input-group"><label for="height">A</label><input type="number" id="height" class="w-20"></div>
+                        </div>
+                         <button id="savePositionBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-save mr-2"></i> Salvar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Área de Pré-visualização -->
+            <div id="preview-container" class="bg-slate-200/50 rounded-xl shadow-inner flex-grow flex items-center justify-center p-4 relative overflow-hidden border border-slate-300">
+                <div id="pdfPreview" class="w-full h-full flex items-center justify-center text-slate-500 relative">
+                    <!-- A imagem do PDF será inserida aqui pelo renderer.js -->
+                </div>
+                <div id="signatureOverlay" style="display: none;">
+                    <img id="signaturePreviewImage" class="w-full h-full" style="pointer-events: none;" alt="Assinatura">
+                    <div class="resize-handle" data-handle="nw"></div>
+                    <div class="resize-handle" data-handle="ne"></div>
+                    <div class="resize-handle" data-handle="sw"></div>
+                    <div class="resize-handle" data-handle="se"></div>
+                </div>
+                <div id="preview-loader" class="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center hidden">
+                    <i class="fas fa-spinner fa-spin text-4xl text-indigo-600"></i>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <script src="renderer.js"></script>
+</body>
+</html>
