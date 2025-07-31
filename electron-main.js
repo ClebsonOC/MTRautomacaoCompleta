@@ -1,4 +1,4 @@
-// electron-main.js - Processo principal do Electron (v3.0 - Caminhos Corrigidos)
+// electron-main.js - Processo principal do Electron (v3.1 - Caminhos de Produção Corrigidos)
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
@@ -41,6 +41,7 @@ function createAssinadorWindow() {
         minHeight: 700,
         title: 'Ferramenta de Assinatura de PDF',
         webPreferences: {
+            // CORREÇÃO: Caminho do preload do assinador também precisa ser ajustado
             preload: path.join(__dirname, 'assinador', 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -58,6 +59,7 @@ function createAssinadorWindow() {
 function getPythonExecutablePath() {
     const execPath = isDev
       ? path.join(__dirname, 'vendor', 'python-portable', 'python.exe')
+      // O caminho para o executável já estava correto.
       : path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'python-portable', 'python.exe');
 
     if (!fs.existsSync(execPath)) {
@@ -73,7 +75,21 @@ ipcMain.on('start-automation', (event, config) => {
     const pythonExecutable = getPythonExecutablePath();
     if (!pythonExecutable) return;
 
-    const scriptPath = path.join(__dirname, 'src', 'main.py');
+    // CORREÇÃO CRÍTICA: O caminho para o script principal precisa diferenciar
+    // o ambiente de desenvolvimento (isDev) do ambiente de produção (empacotado).
+    const scriptPath = isDev
+        ? path.join(__dirname, 'src', 'main.py')
+        : path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'main.py');
+    
+    // Adiciona uma verificação para garantir que o script existe antes de tentar executá-lo
+    if (!fs.existsSync(scriptPath)) {
+        const errorMessage = `[Electron Error]: Script Python principal não encontrado em: ${scriptPath}`;
+        dialog.showErrorBox('Erro Crítico de Arquivo', errorMessage);
+        event.sender.send('log-message', { message: errorMessage, level: 'error' });
+        event.sender.send('automation-finished');
+        return;
+    }
+
     const pythonProcess = spawn(pythonExecutable, [scriptPath]);
     
     pythonProcess.stdin.write(JSON.stringify(config));
@@ -106,15 +122,24 @@ ipcMain.handle('dialog:showAbout', () => dialog.showMessageBox(mainWindow, { typ
 
 // --- IPC HANDLERS DA JANELA DO ASSINADOR ---
 
-// CORREÇÃO: Define o caminho base para a pasta 'assinador'
-const assinadorBasePath = path.join(__dirname, 'assinador');
+// CORREÇÃO: O caminho base do assinador também precisa ser dinâmico.
+const assinadorBasePath = isDev 
+    ? path.join(__dirname, 'assinador')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'assinador');
+
 
 function runAssinadorScript(args) {
     return new Promise((resolve, reject) => {
         const pythonExecutable = getPythonExecutablePath();
         if (!pythonExecutable) return reject('Executável do Python não encontrado');
 
+        // CORREÇÃO CRÍTICA: O caminho para o script do assinador também foi corrigido.
         const scriptPath = path.join(assinadorBasePath, 'src', 'python_script.py');
+
+        if (!fs.existsSync(scriptPath)) {
+            return reject(`Script Python do assinador não encontrado em: ${scriptPath}`);
+        }
+
         const pythonProcess = spawn(pythonExecutable, [scriptPath, ...args]);
         
         let stdout = '';
@@ -133,8 +158,8 @@ function runAssinadorScript(args) {
     });
 }
 
-// CORREÇÃO: Função que cria as pastas DENTRO da pasta 'assinador'
 const setupAssinadorFolders = () => {
+    // Esta função agora usa o 'assinadorBasePath' corrigido.
     const paths = {
         inputFolder: path.join(assinadorBasePath, 'pdfs_entrada'),
         outputFolder: path.join(assinadorBasePath, 'pdfs_saida'),
@@ -149,7 +174,7 @@ const setupAssinadorFolders = () => {
 
 ipcMain.handle('get-initial-data', async () => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
+    const dataFolder = path.join(assinadorBasePath, 'data');
     fs.mkdirSync(dataFolder, { recursive: true });
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
@@ -162,7 +187,7 @@ ipcMain.handle('get-initial-data', async () => {
 
 ipcMain.handle('get-signature-preview', async (e, args) => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
+    const dataFolder = path.join(assinadorBasePath, 'data');
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
     const result = await runAssinadorScript(['get_preview', args.signatureName, args.signatureType, paths.inputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile]);
@@ -170,14 +195,14 @@ ipcMain.handle('get-signature-preview', async (e, args) => {
 });
 
 ipcMain.handle('save-signature-position', async (e, args) => {
-    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
+    const dataFolder = path.join(assinadorBasePath, 'data');
     const positionFile = args.signatureType === 'driver' ? path.join(dataFolder, 'posicoes.txt') : path.join(dataFolder, 'responsaveis_posicoes.json');
     return await runAssinadorScript(['save_position', args.signatureName, args.signatureType, String(args.position.x), String(args.position.y), String(args.position.w), String(args.position.h), positionFile]);
 });
 
 ipcMain.handle('process-pdfs', async (e, args) => {
     const paths = setupAssinadorFolders();
-    const dataFolder = path.join(assinadorBasePath, 'data'); // CORREÇÃO
+    const dataFolder = path.join(assinadorBasePath, 'data');
     const driverPosFile = path.join(dataFolder, 'posicoes.txt');
     const respPosFile = path.join(dataFolder, 'responsaveis_posicoes.json');
     return await runAssinadorScript(['process_pdfs', paths.inputFolder, paths.outputFolder, paths.subscriptionsFolder, driverPosFile, respPosFile, args.emissorFile, args.receptorFile]);

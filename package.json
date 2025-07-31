@@ -18,12 +18,21 @@
   "license": "ISC",
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.0.0" 
+    "electron-builder": "^24.0.0"
   },
   "build": {
+    "appId": "com.clebson.automacaomtr",
+    "productName": "Automacao MTR",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
     "asarUnpack": [
-      "src/**",
-      "vendor/**"
+      "**/src/**",
+      "**/vendor/**",
+      "**/assinador/**"
     ]
   }
 }
